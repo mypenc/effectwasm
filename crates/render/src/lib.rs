@@ -521,7 +521,7 @@ pub struct RenderOpts {
     pub motion_blur: bool,
     /// Render guide layers (viewer only). Only the top-level comp's own guide layers: nested
     /// comps (precomps, collapsed precomps, comps read by effects) never draw theirs, as in
-    /// After Effects (see [`Renderer::nested_opts`]).
+    /// After Effects (see `Renderer::nested_opts`).
     pub guides: bool,
     /// Draft quality: fewer motion-blur samples, bilinear only.
     pub draft: bool,
@@ -2135,7 +2135,7 @@ impl<'a> Renderer<'a> {
     /// applied).
     pub fn visible_layers(&self, ctx: &EvalCtx<'a>) -> Vec<&'a Layer> {
         let (comp, t) = (ctx.comp, ctx.time);
-        let any_solo = comp.layers.iter().any(|l| l.switches.solo && l.source.is_av());
+        let any_solo = comp.any_solo();
         comp.layers
             .iter()
             .rev()

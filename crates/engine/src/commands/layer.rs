@@ -162,6 +162,15 @@ fn text_range_p(p: &Value) -> Option<std::ops::Range<usize>> {
     Some(x.min(y)..x.max(y))
 }
 
+/// `layer.newText`: adds a Text layer to the comp at the CTI and returns `{layer}`.
+///
+/// The document starts as centre-justified "Text", with the optional text parameters applied.
+/// With `box` `[x, y, w, h]`, `(x, y)` is the paragraph box's top-left in comp space. Its width
+/// and height are `w.abs().max(1.0)` and `h.abs().max(1.0)`; the layer position is the box centre.
+/// It is left justified unless `justify` is given. The layer is named by `name`, else the first 40
+/// characters of the first text line, else "Text". `edit: true` also opens a new editing
+/// session with anchor `0` and the caret after the text, selecting all initial text so the next
+/// insertion replaces it. The session has `created: true`, so leaving it empty removes the layer.
 fn new_text(s: &mut Session, p: &Value) -> Result<Value> {
     let cid = comp_id(s, p)?;
     let comp = s.project.comp(cid).ok_or(EngineError::NoComp)?.clone();
@@ -200,7 +209,14 @@ fn new_text(s: &mut Session, p: &Value) -> Result<Value> {
         let n = doc.char_len();
         let id = insert_layer(proj, st, cid, l)?;
         if edit {
-            st.text_edit = Some(super::text_edit::TextEdit { layer: id, anchor: 0, caret: n, created: true, ..Default::default() });
+            st.text_edit = Some(super::text_edit::TextEdit {
+                layer: id,
+                anchor: 0,
+                caret: n,
+                created: true,
+                session: super::text_edit::next_edit_session(),
+                ..Default::default()
+            });
         }
         Ok(id)
     })?;
@@ -1447,6 +1463,15 @@ fn shape_item_target(proj: &mut Project, cid: ItemId, lid: LayerId, group_uid: O
     })
 }
 
+/// `layer.setText`: sets a text layer's Source Text and/or character attributes at the CTI.
+///
+/// A `font` name is also added to the recent fonts and the preferences saved. With an empty
+/// `range` and no `text`, while that layer is being edited and its document is non-empty,
+/// recognised character attributes are also staged in the pending insertion style without
+/// changing existing characters. Paragraph/document attributes still apply through the edit;
+/// the session is bumped whenever this branch runs. Document changes use [`Session::edit`],
+/// merged by `merge_p`. With `text` given, a layer whose name is empty or starts with `Text`
+/// takes the new first line (up to 40 characters) when that line is non-empty. Replies `null`.
 fn set_text(s: &mut Session, p: &Value) -> Result<Value> {
     let (cid, lid) = layer_p(s, p, "layer.setText")?;
     // The Character panel's recent fonts (Settings ▸ Type ▸ Number of Recent Fonts to Display).
@@ -1474,6 +1499,9 @@ fn set_text(s: &mut Session, p: &Value) -> Result<Value> {
         }
         s.bump();
     }
+    // A changed Source Text is handled by `Session::edit`: its boundary clamps the selection and
+    // starts a new IME epoch only when the CTI document actually changed, so an identical text
+    // write stays a no-op and keeps the editor's owner.
     s.edit("Edit Text", merge_p(p), |proj, _| {
         let l = layer_mut(proj, cid, lid)?;
         let lt = l.layer_time(t);
