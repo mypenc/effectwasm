@@ -52,6 +52,13 @@
 <body>
   <canvas id="effectcraft_canvas"></canvas>
   <div id="loading"><img src="favicon.svg" alt=""><div id="status">Loading EffectCraft…</div><div id="progress" role="progressbar" aria-label="Downloading EffectCraft" aria-valuemin="0" aria-valuemax="100"><div></div></div></div>
+  <script>
+    // Ctrl/Cmd+D is Edit ▸ Duplicate here, not "bookmark this page". Bubble phase: the app's own key
+    // handlers have already seen the key by the time the browser default is cancelled.
+    window.addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === "d" || e.key === "D" || e.code === "KeyD")) e.preventDefault();
+    });
+  </script>
   <script type="module">
     import init, * as ec from "./effectcraft_web.js";
     const t0 = performance.now();
