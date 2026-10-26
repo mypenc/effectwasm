@@ -67,7 +67,10 @@ pub(crate) fn open_or_import(app: &mut EffectcraftApp, paths: Vec<String>) {
         app.ui.status = e.to_string();
     }
     if !media.is_empty() {
-        match app.session.execute("file.import", json!({"paths": media})) {
+        // `sequence: false`: every picked or dropped image imports as its own still. Without it the
+        // engine pulls a numbered still's whole run in as one image sequence (and the desktop
+        // asks first); here we never turn images into a sequence on our own.
+        match app.session.execute("file.import", json!({"paths": media, "sequence": false})) {
             Ok(r) => {
                 if let Some(errs) = r["errors"].as_array().filter(|e| !e.is_empty()) {
                     app.ui.status = errs.iter().filter_map(|e| e.as_str()).collect::<Vec<_>>().join("; ");
