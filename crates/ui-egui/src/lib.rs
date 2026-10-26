@@ -306,6 +306,12 @@ pub struct Hooks {
     /// a drag over the window (#511), and on Linux a blocking desktop-portal dialog never pumps
     /// events, so the compositor marks the window as not responding (#1275).
     pub file_dialog_async: Option<Box<dyn Fn(FileDialog, DialogDone)>>,
+    /// Like [`Hooks::file_dialog_async`] but only for the commands that ask for one file of their
+    /// own kind (Install Script File…, Run Script File…, Import Lottie…: `FileDialog::Open`),
+    /// for hosts whose other dialogs stay on the synchronous pickers. The web build uses it: the
+    /// browser's file picker can't block, and its answer has to reach the command that asked
+    /// (not the media importer).
+    pub open_dialog_async: Option<Box<dyn Fn(FileDialog, DialogDone)>>,
     /// Tells the user the graphics device was lost and the window is closing, once. `saved` is
     /// the auto-save of unsaved changes (`None`: nothing was unsaved), its path or why it failed.
     pub device_lost: Option<Box<dyn Fn(Option<Result<String, String>>)>>,

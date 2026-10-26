@@ -66,6 +66,13 @@ pub(crate) fn open_or_import(app: &mut EffectcraftApp, paths: Vec<String>) {
     {
         app.ui.status = e.to_string();
     }
+    let (scripts, media): (Vec<String>, Vec<String>) = media.into_iter().partition(|p| {
+        let l = p.to_ascii_lowercase();
+        l.ends_with(".jsx") || l.ends_with(".js")
+    });
+    if !scripts.is_empty() {
+        app.ui.status = "Scripts are installed from File ▸ Scripts ▸ Install Script File… or Install ScriptUI Panel…".into();
+    }
     if !media.is_empty() {
         // `sequence: false`: every picked or dropped image imports as its own still. Without it the
         // engine pulls a numbered still's whole run in as one image sequence (and the desktop
@@ -176,7 +183,7 @@ fn query_value(name: &str) -> Option<String> {
 pub fn session() -> Session {
     let pool = Arc::new(effectcraft_media::MediaPool::new());
     persist::register_media(&pool);
-    Session {
+    let mut session = Session {
         services: Arc::new(files::WebServices),
         footage: pool.clone(),
         importer: Some(Arc::new(files::WebImporter { pool })),
@@ -193,7 +200,11 @@ pub fn session() -> Session {
         browser: Some(Arc::new(browse::WebBrowser)),
         storage: Some(Arc::new(storage::WebStorage)),
         ..Default::default()
-    }
+    };
+    // Scripting, ScriptUI panels and scheduled tasks (`script` alone leaves ScriptUI buttons and
+    // panels answering "scripting is not available in this build").
+    effectcraft_host::script::install(&mut session);
+    session
 }
 
 /// Browser file pickers in place of the desktop's file dialogs.
@@ -205,6 +216,18 @@ fn install_hooks(app: &mut EffectcraftApp) {
         }
         // the import happens when the browser hands over the files
         Vec::new()
+    }));
+    // Commands that ask for one file of their own kind (Install Script File…, ScriptUI panels,
+    // Run Script File…, Import Lottie…) get the picked file back, not the media importer.
+    app.hooks.open_dialog_async = Some(Box::new(|dialog, done| {
+        let effectcraft_ui_egui::FileDialog::Open { exts, many } = dialog else { return done(Vec::new()) };
+        let accept = exts.iter().map(|e| format!(".{e}")).collect::<Vec<_>>().join(",");
+        if let Err(e) = files::pick(&accept, many, move |paths| {
+            done(paths);
+            repaint();
+        }) {
+            log::warn!("file picker: {e:?}");
+        }
     }));
     app.hooks.pick_open_project = Some(Box::new(|| {
         if let Err(e) = files::pick(".ecproj", false, |paths| post(move |app| open_or_import(app, paths))) {

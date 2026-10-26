@@ -1409,7 +1409,8 @@ fn file_dialog(app: &mut EffectcraftApp, id: &str, params: &Value) -> Option<Res
     // window and aborted the app (#511); Linux: the desktop portal's answer never gets pumped,
     // so the compositor marks the window as not responding (#1275) — and the command continues
     // when the answer arrives.
-    if let Some(spawn) = app.hooks.file_dialog_async.as_ref() {
+    let spawn = app.hooks.file_dialog_async.as_ref().or(if matches!(ask, Ask::Open(_)) { app.hooks.open_dialog_async.as_ref() } else { None });
+    if let Some(spawn) = spawn {
         let request = match ask {
             Ask::Folder => crate::FileDialog::Folder,
             Ask::Import => crate::FileDialog::Open { exts: MEDIA.iter().map(|e| e.to_string()).collect(), many: key == "paths" },
@@ -2673,6 +2674,35 @@ mod tests {
         app.run_dialog_answers();
         assert!(!dir.join("Frame.png").exists());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The web build: its file picker can't block, so a command that asks for one file of its own
+    /// kind (Install ScriptUI Panel…) shows it through `open_dialog_async` and gets the answer
+    /// back, while the other dialogs (File ▸ Import) stay on the synchronous pickers.
+    #[test]
+    fn open_dialog_async_serves_only_single_file_commands() {
+        use std::sync::{Arc, Mutex};
+        let mut app = EffectcraftApp::new(effectcraft_engine::Session::default());
+        let ctx = egui::Context::default();
+        let pending: Arc<Mutex<Vec<(crate::FileDialog, crate::DialogDone)>>> = Arc::default();
+        let queue = pending.clone();
+        app.hooks.open_dialog_async = Some(Box::new(move |dialog, done| queue.lock().unwrap().push((dialog, done))));
+        let imported: Arc<Mutex<u32>> = Arc::default();
+        let seen = imported.clone();
+        app.hooks.pick_files = Some(Box::new(move |_: &[&str]| {
+            *seen.lock().unwrap() += 1;
+            Vec::new()
+        }));
+        assert_eq!(invoke(&mut app, &ctx, "file.installScriptUIPanel", json!({})).unwrap(), json!({"dialog": "file.installScriptUIPanel"}));
+        let (dialog, done) = pending.lock().unwrap().pop().expect("a dialog was shown");
+        assert_eq!(dialog, crate::FileDialog::Open { exts: vec!["jsx".into(), "js".into()], many: false });
+        assert_eq!(*imported.lock().unwrap(), 0, "the media picker is not used for a script");
+        done(Vec::new());
+        app.run_dialog_answers();
+        // File ▸ Import keeps the synchronous picker.
+        let _ = invoke(&mut app, &ctx, "file.import", json!({}));
+        assert!(pending.lock().unwrap().is_empty());
+        assert_eq!(*imported.lock().unwrap(), 1);
     }
 
     /// While a command's OS file dialog is up, floating panels' OS windows are blocked, as for
