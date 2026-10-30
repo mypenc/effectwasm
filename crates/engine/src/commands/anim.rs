@@ -1,7 +1,7 @@
 //! Keyframe clipboard, selection, nudging, direct key/ease edits (Graph Editor handles) and key
 //! inspection for the Keyframe Velocity / Keyframe Interpolation dialogs.
 
-use effectcraft_keyframe::{Ease, Interp, Keyframe, ShapePath, Value as KValue, key_at, retime_roving, side_ease};
+use effectcraft_keyframe::{Ease, Interp, Keyframe, ShapePath, Value as KValue, Wave, WaveKind, key_at, retime_roving, side_ease};
 use effectcraft_project::{ItemId, LayerId, Property, Uid};
 use effectcraft_time::Tick;
 use serde_json::{Value, json};
@@ -398,6 +398,67 @@ fn set_ease(s: &mut Session, p: &Value) -> Result<Value> {
     })
 }
 
+/// A wave from the command's `kind` / `size` (percent of the travel) / `freq` / `decay`, keeping the
+/// numbers of `base` (the key's current wave, or the default) for whatever the call leaves out.
+fn wave_params(p: &Value, base: Wave, c: &str) -> Result<Wave> {
+    let kind = match str_p(p, "kind") {
+        Some("oscillate") => WaveKind::Oscillate,
+        Some("bounce") => WaveKind::Bounce,
+        Some(_) => return Err(bad(c, "`kind` must be oscillate or bounce")),
+        None => base.kind,
+    };
+    let wave = Wave {
+        kind,
+        size: f_p(p, "size").map_or(base.size, |v| v / 100.0),
+        freq: f_p(p, "freq").unwrap_or(base.freq),
+        decay: f_p(p, "decay").unwrap_or(base.decay),
+    };
+    Ok(wave.sanitized())
+}
+
+/// `side` of a wave command: `after` (plays after the key is reached) or `before` (before it is left).
+fn wave_side(p: &Value, c: &str) -> Result<bool> {
+    match str_p(p, "side").unwrap_or("after") {
+        "after" => Ok(true),
+        "before" => Ok(false),
+        _ => Err(bad(c, "`side` must be after or before")),
+    }
+}
+
+/// Set, change or clear the wave of one key (scripting, Graph Editor).
+fn set_wave(s: &mut Session, p: &Value) -> Result<Value> {
+    let c = "keys.setWave";
+    let (cid, lid, uid) = prop_ref(s, p, c)?;
+    let t = Tick::from_seconds_f64(f_p(p, "time").ok_or_else(|| bad(c, "missing `time`"))?);
+    let after = wave_side(p, c)?;
+    let clear = p.get("clear").and_then(Value::as_bool).unwrap_or(false);
+    s.edit("Keyframe Wave", merge_p(p), |proj, _| {
+        let l = super::layer_mut(proj, cid, lid)?;
+        let pr = l.props.find_mut(uid).ok_or_else(|| bad(c, "no property"))?;
+        let i = nearest_key(&pr.keys, t).ok_or_else(|| bad(c, "no keyframes"))?;
+        let k = pr.keys.get_mut(i).ok_or_else(|| bad(c, "no keyframes"))?;
+        let slot = if after { &mut k.wave_after } else { &mut k.wave_before };
+        *slot = if clear { None } else { Some(wave_params(p, slot.unwrap_or_default(), c)?) };
+        Ok(Value::Null)
+    })
+}
+
+/// Lay a wave on every selected key, or clear it (Animation ▸ Keyframe Assistant).
+fn wave_selected(s: &mut Session, p: &Value) -> Result<Value> {
+    let c = "keys.wave";
+    let after = wave_side(p, c)?;
+    let clear = p.get("clear").and_then(Value::as_bool).unwrap_or(false);
+    let base = wave_params(p, Wave::default(), c)?;
+    let n = super::prop::edit_keys(s, "Keyframe Wave", None, |keys, i, _| {
+        if let Some(k) = keys.get_mut(i) {
+            let slot = if after { &mut k.wave_after } else { &mut k.wave_before };
+            *slot = if clear { None } else { Some(base) };
+        }
+        false
+    })?;
+    Ok(json!({"keys": n}))
+}
+
 /// Speed units for a property (Keyframe Velocity dialog).
 fn units(pr: &Property) -> &'static str {
     use effectcraft_project::ParamUi;
@@ -560,6 +621,24 @@ pub fn specs() -> Vec<CommandSpec> {
             "{layer?, path|prop, time (layer s), side: in|out, dim?, speed?, influence? %, merge?}",
             has_comp,
             set_ease
+        ),
+        cmd!(
+            "keys.setWave",
+            "Set Keyframe Wave",
+            [],
+            None,
+            "{layer?, path|prop, time (layer s), side?: after|before, kind?: oscillate|bounce, size? % of travel, freq? Hz, decay?, clear?: bool, merge?}",
+            has_comp,
+            set_wave
+        ),
+        cmd!(
+            "keys.wave",
+            "Add Wave to Keyframes",
+            ["Animation", "Keyframe Assistant"],
+            None,
+            "{side?: after|before, kind?: oscillate|bounce, size? % of travel (default 15), freq? Hz (3), decay? (5), clear?: bool}",
+            has_keys,
+            wave_selected
         ),
         cmd!("keys.timeReverse", "Time-Reverse Keyframes", ["Animation", "Keyframe Assistant"], None, "{}", has_keys, time_reverse),
         query!("keys.info", "Keyframe Info", "{keys?: [{layer, prop, time}]}", info),

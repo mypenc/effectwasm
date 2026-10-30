@@ -997,6 +997,31 @@ Property.prototype.property = function () { return null; };
   };
   P.setSpatialContinuousAtKey = function (i, b) { this.__keyCmd(i, "keys.interpolation", { spatial: b ? "continuousBezier" : "bezier" }); };
   P.setSpatialAutoBezierAtKey = function (i, b) { this.__keyCmd(i, "keys.interpolation", { spatial: b ? "autoBezier" : "bezier" }); };
+  // EffectCraft extension: a wave (oscillate / bounce) stored on a key, evaluated natively so the
+  // property keeps its two keyframes and the Graph Editor draws the combined curve.
+  // side "after" plays after the value reaches the key; "before" plays before it leaves the key.
+  // size is a percent of the distance travelled; freq is in Hz; decay is how fast it settles.
+  P.keyWave = function (i, side) {
+    var k = this.__key(i);
+    var w = side === "before" ? k.waveBefore : k.waveAfter;
+    return w ? { kind: w.kind, size: w.size, freq: w.freq, decay: w.decay } : null;
+  };
+  P.setWaveAtKey = function (i, side, wave) {
+    if (side !== "after" && side !== "before") throw __err("setWaveAtKey: side must be \"after\" or \"before\"");
+    var params = { side: side };
+    if (wave === null || wave === undefined) params.clear = true;
+    else {
+      if (wave.kind !== undefined) {
+        if (wave.kind !== "oscillate" && wave.kind !== "bounce") throw __err("setWaveAtKey: kind must be \"oscillate\" or \"bounce\"");
+        params.kind = wave.kind;
+      }
+      if (wave.size !== undefined) params.size = __num(wave.size, "size");
+      if (wave.freq !== undefined) params.freq = __num(wave.freq, "freq");
+      if (wave.decay !== undefined) params.decay = __num(wave.decay, "decay");
+    }
+    var k = this.__key(i);
+    __call("keys.setWave", this.__ref(Object.assign({ time: k.layerTime }, params)));
+  };
   P.keySelected = function (i) { return !!this.__key(i).selected; };
   P.setSelectedAtKey = function (i, b) {
     var k = this.__key(i);

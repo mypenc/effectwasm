@@ -12,6 +12,9 @@
 
 pub mod text_doc;
 pub mod value;
+pub mod wave;
+
+pub use wave::{Wave, WaveKind};
 
 use effectcraft_time::{TICKS_PER_SECOND, Tick};
 use serde::{Deserialize, Serialize};
@@ -89,6 +92,12 @@ pub struct Keyframe {
     /// Keyframe color label: index into the label list (0 = None).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub label: u8,
+    /// A wave that plays after the value arrives at this key (see [`wave`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wave_after: Option<Wave>,
+    /// A wave that plays before the value leaves this key (see [`wave`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wave_before: Option<Wave>,
 }
 
 fn is_zero(v: &u8) -> bool {
@@ -116,6 +125,8 @@ impl Keyframe {
             spatial_continuous: false,
             roving: false,
             label: 0,
+            wave_after: None,
+            wave_before: None,
         }
     }
     pub fn hold(mut self) -> Keyframe {
@@ -503,22 +514,25 @@ pub fn time_reverse(keys: &mut [Keyframe]) {
         std::mem::swap(&mut k.in_interp, &mut k.out_interp);
         std::mem::swap(&mut k.in_ease, &mut k.out_ease);
         std::mem::swap(&mut k.spatial_in, &mut k.spatial_out);
+        std::mem::swap(&mut k.wave_after, &mut k.wave_before);
     }
     keys.reverse();
 }
 
 /// Evaluate a keyframed property at `t`. `spatial` selects motion-path semantics for 2D/3D values.
+/// Per-key waves ([`wave`]) are laid on top of the tweened value.
 pub fn evaluate(keys: &[Keyframe], t: Tick, spatial: bool) -> Option<Value> {
     let first = keys.first()?;
-    if keys.len() == 1 || t <= first.time {
-        return Some(first.value.clone());
-    }
     let last = keys.last()?;
-    if t >= last.time {
-        return Some(last.value.clone());
-    }
-    let i = keys.partition_point(|k| k.time <= t) - 1;
-    Some(segment_value(keys, i, t, spatial))
+    let base = if keys.len() == 1 || t <= first.time {
+        first.value.clone()
+    } else if t >= last.time {
+        last.value.clone()
+    } else {
+        let i = keys.partition_point(|k| k.time <= t) - 1;
+        segment_value(keys, i, t, spatial)
+    };
+    Some(wave::apply(keys, t, base))
 }
 
 /// Value inside segment `i` → `i+1` at time `t`.
@@ -617,6 +631,8 @@ pub fn set_key(keys: &mut Vec<Keyframe>, key: Keyframe) -> usize {
             k.spatial_continuous = old.spatial_continuous;
             k.roving = old.roving;
             k.label = old.label;
+            k.wave_after = old.wave_after;
+            k.wave_before = old.wave_before;
             keys[i] = k;
             i
         }

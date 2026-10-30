@@ -567,6 +567,7 @@ fn keys(s: &Session, a: &J) -> R {
             "continuous": k.continuous, "autoBezier": k.auto_bezier, "roving": k.roving,
             "spatialIn": spatial_in, "spatialOut": spatial_out,
             "spatialContinuous": k.spatial_continuous, "spatialAutoBezier": k.spatial_auto,
+            "waveAfter": wave_json(k.wave_after), "waveBefore": wave_json(k.wave_before),
             "selected": sel.contains(&k.time),
         })
     };
@@ -787,4 +788,14 @@ fn menu_command_id(name: &str) -> J {
         .or_else(|| specs.iter().position(|c| norm(c.label) == n))
         .or_else(|| specs.iter().position(|c| c.id == name));
     json!(pick.map(|i| i + 1).unwrap_or(0))
+}
+
+/// A key's wave as scripts see it (size in percent of the travel), or null.
+fn wave_json(w: Option<effectcraft_keyframe::Wave>) -> J {
+    match w {
+        Some(w) => {
+            json!({"kind": match w.kind { effectcraft_keyframe::WaveKind::Oscillate => "oscillate", effectcraft_keyframe::WaveKind::Bounce => "bounce" }, "size": w.size * 100.0, "freq": w.freq, "decay": w.decay})
+        }
+        None => J::Null,
+    }
 }
