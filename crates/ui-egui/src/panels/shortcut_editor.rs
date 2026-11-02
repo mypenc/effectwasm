@@ -49,6 +49,8 @@ const PANEL_COLOR: Color32 = Color32::from_rgb(0x3f, 0xa8, 0x6c);
 
 pub fn open(app: &mut EffectcraftApp) {
     app.dialog_state.shortcuts = EditorState::default();
+    // Scripts copied into the Scripts folder since the table was built are listed too.
+    app.session.scripts_changed();
     app.dialog = Some(Dialog::Shortcuts);
 }
 
@@ -264,7 +266,7 @@ pub fn show(app: &mut EffectcraftApp, ctx: &egui::Context, t: &Tokens) {
         // ---- preset bar
         ui.horizontal(|ui| {
             ui.label(tr("Preset:"));
-            let r = egui::ComboBox::from_id_salt("sc-preset").selected_text(&active).width(220.0).show_ui(ui, |ui| {
+            let r = craft_ui::ComboBox::from_id_salt("sc-preset").selected_text(&active).width(220.0).show_ui(ui, |ui| {
                 for n in &presets {
                     if ui.selectable_label(*n == active, n).clicked() {
                         run.push(("shortcuts.preset".into(), json!({"op": "select", "name": n})));

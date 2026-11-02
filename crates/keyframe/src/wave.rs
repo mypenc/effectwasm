@@ -13,6 +13,8 @@
 //! Only scalar, 2D and 3D values take a wave (colours and other kinds ignore it). On a spatial
 //! property the wave swings along the straight line between the two keys.
 
+use std::borrow::Borrow;
+
 use effectcraft_time::Tick;
 use serde::{Deserialize, Serialize};
 
@@ -105,12 +107,13 @@ fn travel(a: &Value, b: &Value) -> Option<Vec<f64>> {
 }
 
 /// `base` (the tweened value at `t`) plus the waves of the keys around `t`.
-pub(crate) fn apply(keys: &[Keyframe], t: Tick, base: Value) -> Value {
+pub(crate) fn apply<K: Borrow<Keyframe>>(keys: &[K], t: Tick, base: Value) -> Value {
     if !matches!(base, Value::Scalar(_) | Value::Vec2(_) | Value::Vec3(_)) {
         return base;
     }
     let n = keys.len();
-    let idx = keys.partition_point(|k| k.time <= t);
+    let key = |i: usize| -> Option<&Keyframe> { keys.get(i).map(|k| k.borrow()) };
+    let idx = keys.partition_point(|k| k.borrow().time <= t);
     let prev = idx.checked_sub(1);
     let next = (idx < n).then_some(idx);
     let ts = secs(t);
@@ -119,11 +122,11 @@ pub(crate) fn apply(keys: &[Keyframe], t: Tick, base: Value) -> Value {
 
     // After the value arrives at `prev`.
     if let Some(i) = prev.filter(|i| *i >= 1)
-        && let (Some(k), Some(before)) = (keys.get(i), keys.get(i - 1))
+        && let (Some(k), Some(before)) = (key(i), key(i - 1))
         && let Some(w) = k.wave_after
         && let Some(d) = travel(&before.value, &k.value)
     {
-        let f = match keys.get(i + 1) {
+        let f = match key(i + 1) {
             Some(nk) => fade(secs(nk.time) - secs(k.time), secs(nk.time) - ts),
             None => 1.0,
         };
@@ -136,11 +139,11 @@ pub(crate) fn apply(keys: &[Keyframe], t: Tick, base: Value) -> Value {
 
     // Before the value leaves `next`.
     if let Some(m) = next
-        && let (Some(k), Some(after)) = (keys.get(m), keys.get(m + 1))
+        && let (Some(k), Some(after)) = (key(m), key(m + 1))
         && let Some(w) = k.wave_before
         && let Some(d) = travel(&k.value, &after.value)
     {
-        let f = match prev.and_then(|i| keys.get(i)) {
+        let f = match prev.and_then(key) {
             Some(pk) => fade(secs(k.time) - secs(pk.time), ts - secs(pk.time)),
             None => 1.0,
         };

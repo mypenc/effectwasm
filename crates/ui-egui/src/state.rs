@@ -229,6 +229,7 @@ impl Tool {
     }
 }
 
+use super::*;
 /// The viewer's Resolution: each composition keeps its own in the project
 /// ([`effectcraft_engine::project::Comp::resolution`], `EffectcraftApp::viewer_res`).
 pub use effectcraft_engine::project::Resolution;
@@ -306,6 +307,31 @@ impl Default for ViewerState {
 }
 
 impl TimelineState {
+    /// Whether property `uid`'s chain link (Constrain Proportions) is on. One that starts linked
+    /// (Scale, Mask Feather) records a click in `unlinked`; one that starts unlinked (shape Size,
+    /// Audio Levels) records it in `linked`.
+    pub fn is_linked(&self, uid: u64, linked_by_default: bool) -> bool {
+        if linked_by_default { !self.unlinked.contains(&uid) } else { self.linked.contains(&uid) }
+    }
+
+    /// Turn property `uid`'s chain link on or off (see [`Self::is_linked`]).
+    pub fn toggle_link(&mut self, uid: u64, linked_by_default: bool) {
+        let set = if linked_by_default { &mut self.unlinked } else { &mut self.linked };
+        if !set.remove(&uid) {
+            set.insert(uid);
+        }
+    }
+
+    /// Forget the chain links when the project was replaced (new or opened): they are keyed by
+    /// property uid, which the next project reuses, so a link turned on must not carry into it.
+    pub fn scope_links(&mut self, project_epoch: u64) {
+        if self.link_epoch != project_epoch {
+            self.link_epoch = project_epoch;
+            self.unlinked.clear();
+            self.linked.clear();
+        }
+    }
+
     /// Show `kinds` on `layers` (twirled open; empty: twirled closed) and remember it as the last
     /// reveal. Other layers keep theirs.
     pub fn apply_reveal(&mut self, layers: &[u64], kinds: Vec<String>) {
@@ -413,6 +439,13 @@ pub struct TimelineState {
     /// was turned off.
     #[serde(default)]
     pub unlinked: BTreeSet<u64>,
+    /// Shape Rectangle and Ellipse Path Size (#2489) and Audio Levels (#2485) properties whose
+    /// chain link (off by default) was turned on.
+    #[serde(default)]
+    pub linked: BTreeSet<u64>,
+    /// The project (its epoch) `unlinked` and `linked` belong to.
+    #[serde(skip)]
+    pub link_epoch: u64,
     /// Visible optional columns (column header right-click ▸ Columns): `av`, `keys`, `label`,
     /// `num`, `comment`, `switches`, `parent`, `in`, `out`, `duration`, `stretch`. The name
     /// column is always shown; Modes follows `show_modes` (F4).
@@ -465,6 +498,8 @@ impl Default for TimelineState {
             expr_closed: BTreeSet::new(),
             expr_lines: BTreeMap::new(),
             unlinked: BTreeSet::new(),
+            linked: BTreeSet::new(),
+            link_epoch: 0,
             columns: default_tl_columns(),
             source_name: false,
             scroll_to: None,
@@ -745,4 +780,49 @@ impl Default for UiState {
             scopes: Default::default(),
         }
     }
+}
+
+/// What a `ui.screenshot` captures.
+///
+/// A panel or element is an identity, not a rectangle: it is resolved again when the capture is
+/// issued, after the settle passes, so a panel that moved or resized while the UI settled is
+/// captured where it is now (never with the rectangle from request admission).
+#[derive(Clone, Debug, PartialEq)]
+pub enum ShotTarget {
+    /// The whole root surface.
+    Window,
+    /// A fixed rectangle in logical points, relative to the root surface's top-left corner.
+    Rect([f32; 4]),
+    /// One dock panel's automation rectangle (`panel.<id>`).
+    Panel(PanelKind),
+    /// One automation element id's rectangle.
+    Id(String),
+}
+
+/// The comp frames a playback pass covers (`first..=last`).
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct FrameWindow {
+    pub(crate) first: i64,
+    pub(crate) last: i64,
+}
+
+/// The inputs of one playback pass: the viewer series it renders, the preview plan and
+/// position, and the frame range and clock settings its steps share. `queued` is a snapshot of
+/// the in-flight render count that each step copies. Built once in `advance_playback`.
+#[derive(Clone, Copy)]
+pub(crate) struct PlaybackPass<'a> {
+    pub(crate) ctx: &'a egui::Context,
+    pub(crate) comp: &'a effectcraft_engine::project::Comp,
+    pub(crate) cid: ItemId,
+    pub(crate) scale: f64,
+    pub(crate) now: f64,
+    pub(crate) frame_rate: effectcraft_engine::time::FrameRate,
+    pub(crate) series: FrameKey,
+    pub(crate) plan: Option<effectcraft_engine::preview::PreviewPlan>,
+    pub(crate) window: FrameWindow,
+    pub(crate) cur: i64,
+    pub(crate) video: bool,
+    pub(crate) looping: bool,
+    pub(crate) ahead: i64,
+    pub(crate) queued: usize,
 }
