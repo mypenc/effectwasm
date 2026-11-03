@@ -10,10 +10,12 @@
 
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+pub mod segment_wave;
 pub mod text_doc;
 pub mod value;
 pub mod wave;
 
+pub use segment_wave::{SegmentDir, SegmentKind, SegmentWave};
 pub use wave::{Wave, WaveKind};
 
 use effectcraft_time::{TICKS_PER_SECOND, Tick};
@@ -99,6 +101,10 @@ pub struct Keyframe {
     /// A wave that plays before the value leaves this key (see [`wave`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wave_before: Option<Wave>,
+    /// A bounce / elastic / spring / oscillate curve that is the motion from this key to the next
+    /// (see [`segment_wave`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub segment_wave: Option<SegmentWave>,
     /// Muted keys stay in the list (and the UI) but evaluation skips them.
     #[serde(default, skip_serializing_if = "is_false")]
     pub muted: bool,
@@ -135,6 +141,7 @@ impl Keyframe {
             label: 0,
             wave_after: None,
             wave_before: None,
+            segment_wave: None,
             muted: false,
         }
     }
@@ -531,6 +538,12 @@ pub fn time_reverse(keys: &mut [Keyframe]) {
         std::mem::swap(&mut k.wave_after, &mut k.wave_before);
     }
     keys.reverse();
+    // A segment's curve sits on the key it starts at: after the reversal that is the old end key,
+    // and the curve runs backwards.
+    let curves: Vec<Option<SegmentWave>> = keys.iter().map(|k| k.segment_wave).collect();
+    for (j, k) in keys.iter_mut().enumerate() {
+        k.segment_wave = curves.get(j + 1).copied().flatten().map(SegmentWave::mirrored);
+    }
 }
 
 /// Evaluate a keyframed property at `t`. `spatial` selects motion-path semantics for 2D/3D values.
@@ -575,6 +588,15 @@ fn segment_value_of<K: Borrow<Keyframe>>(keys: &[K], i: usize, t: Tick, spatial:
     let (t0, t1) = (secs(a.time), secs(b.time));
     let dur = (t1 - t0).max(1e-12);
     let x = ((secs(t) - t0) / dur).clamp(0.0, 1.0);
+    // A segment wave is the motion itself: progress runs through its curve, straight between the keys.
+    if let Some(sw) = a.segment_wave {
+        let (ca, cb) = (a.value.components(), b.value.components());
+        if matches!(a.value, Value::Scalar(_) | Value::Vec2(_) | Value::Vec3(_)) && !ca.is_empty() && ca.len() == cb.len() {
+            let f = sw.at(x);
+            let out: Vec<f64> = ca.iter().zip(&cb).map(|(p, q)| p + (q - p) * f).collect();
+            return a.value.with_components(&out);
+        }
+    }
     let lin_out = a.out_interp == Interp::Linear;
     // A Hold in-side only matters for the segment it ends, which the out side above decides:
     // it shapes the incoming segment like a linear side, as in the Graph Editor and Lottie export.
@@ -663,6 +685,7 @@ pub fn set_key(keys: &mut Vec<Keyframe>, key: Keyframe) -> usize {
             k.label = old.label;
             k.wave_after = old.wave_after;
             k.wave_before = old.wave_before;
+            k.segment_wave = old.segment_wave;
             k.muted = old.muted;
             keys[i] = k;
             i

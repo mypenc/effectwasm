@@ -346,7 +346,11 @@ pub async fn start(canvas_id: String) -> Result<(), JsValue> {
                 // Viewer frames render in frame workers (`?frameworkers=N`, 0 or `?noworkers`:
                 // on the page's thread), each on its own WebGPU device where the browser has
                 // WebGPU in workers (`?nogpuworkers`: their CPU).
-                let n = if query_flag("noworkers") { 0 } else { query_value("frameworkers").and_then(|v| v.parse().ok()).unwrap_or(if chromeos() { 0 } else { 2usize }).min(8) };
+                let n = if query_flag("noworkers") {
+                    0
+                } else {
+                    query_value("frameworkers").and_then(|v| v.parse().ok()).unwrap_or(if chromeos() { 0 } else { 2usize }).min(8)
+                };
                 if n > 0 {
                     app.frames.set_remote(Some(Arc::new(frames::WebFrames::start(n, !no_gpu_workers()))));
                 }

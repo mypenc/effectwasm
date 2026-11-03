@@ -1865,12 +1865,10 @@ mod view;
 
 use frame::{empty_state, rect_of, show_frame};
 pub(crate) use frame::{extended_region, minify_factor, snap_to_pixels, styled_line, zoom_sampler, zoom_texture_options};
+pub(super) use geometry::{NEAR_W, cam_state, project_segment};
 #[cfg(test)]
 use geometry::{box_corners, project_clipped};
-use geometry::{
-    drag_ratio, handle_axes, handle_cursor, handle_point, one_axis, quad_intersects_box, rotate_value, selected_others, snap_handle, turn_delta,
-};
-pub(super) use geometry::{NEAR_W, cam_state, project_segment};
+use geometry::{drag_ratio, handle_axes, handle_cursor, handle_point, one_axis, quad_intersects_box, rotate_value, selected_others, snap_handle, turn_delta};
 pub(crate) use geometry::{from_effect_space, fx2c, l2c, layer_outline, layer_quad};
 use gesture::{Gesture, HANDLE, ROTO_HINT, pen_id, roi_drag, roi_handles, vertex_grab_radius};
 use shapes::{create_shape, draw_shape_ghost, shape_drag};

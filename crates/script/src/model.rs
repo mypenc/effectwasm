@@ -567,7 +567,7 @@ fn keys(s: &Session, a: &J) -> R {
             "continuous": k.continuous, "autoBezier": k.auto_bezier, "roving": k.roving,
             "spatialIn": spatial_in, "spatialOut": spatial_out,
             "spatialContinuous": k.spatial_continuous, "spatialAutoBezier": k.spatial_auto,
-            "waveAfter": wave_json(k.wave_after), "waveBefore": wave_json(k.wave_before),
+            "waveAfter": wave_json(k.wave_after), "waveBefore": wave_json(k.wave_before), "segmentWave": segment_wave_json(k.segment_wave), "segmentWave": segment_wave_json(k.segment_wave),
             "selected": sel.contains(&k.time),
         })
     };
@@ -772,6 +772,32 @@ fn wave_json(w: Option<effectcraft_keyframe::Wave>) -> J {
         Some(w) => {
             json!({"kind": match w.kind { effectcraft_keyframe::WaveKind::Oscillate => "oscillate", effectcraft_keyframe::WaveKind::Bounce => "bounce" }, "size": w.size * 100.0, "freq": w.freq, "decay": w.decay})
         }
+        None => J::Null,
+    }
+}
+
+/// A key's segment wave as scripts see it (size in percent), or null.
+fn segment_wave_json(w: Option<effectcraft_keyframe::SegmentWave>) -> J {
+    use effectcraft_keyframe::{SegmentDir, SegmentKind};
+    match w {
+        Some(w) => json!({
+            "kind": match w.kind { SegmentKind::Bounce => "bounce", SegmentKind::Elastic => "elastic", SegmentKind::Spring => "spring", SegmentKind::Oscillate => "oscillate" },
+            "dir": match w.dir { SegmentDir::Out => "out", SegmentDir::In => "in", SegmentDir::InOut => "inout" },
+            "count": w.count, "size": w.size * 100.0, "decay": w.decay,
+        }),
+        None => J::Null,
+    }
+}
+
+/// A key's segment wave as scripts see it (size in percent), or null.
+fn segment_wave_json(w: Option<effectcraft_keyframe::SegmentWave>) -> J {
+    use effectcraft_keyframe::{SegmentDir, SegmentKind};
+    match w {
+        Some(w) => json!({
+            "kind": match w.kind { SegmentKind::Bounce => "bounce", SegmentKind::Elastic => "elastic", SegmentKind::Spring => "spring", SegmentKind::Oscillate => "oscillate" },
+            "dir": match w.dir { SegmentDir::Out => "out", SegmentDir::In => "in", SegmentDir::InOut => "inout" },
+            "count": w.count, "size": w.size * 100.0, "decay": w.decay,
+        }),
         None => J::Null,
     }
 }

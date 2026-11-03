@@ -1026,6 +1026,48 @@ Property.prototype.property = function () { return null; };
     var k = this.__key(i);
     __call("keys.setWave", this.__ref(Object.assign({ time: k.layerTime }, params)));
   };
+  // A bounce / elastic / spring / oscillate curve that IS the motion between key i and the next one:
+  // it swings or bounces inside the segment and lands exactly on the second key (Alight Motion style).
+  // spec: {kind: "bounce"|"elastic"|"spring"|"oscillate", dir: "out"|"in"|"inout", count, size (percent), decay}.
+  // Pass null to remove it.
+  P.keySegmentWave = function (i) {
+    var w = this.__key(i).segmentWave;
+    return w ? { kind: w.kind, dir: w.dir, count: w.count, size: w.size, decay: w.decay } : null;
+  };
+  P.setSegmentWaveAtKey = function (i, spec) {
+    var params = {};
+    if (spec === null || spec === undefined) params.clear = true;
+    else {
+      if (spec.kind !== undefined) params.kind = String(spec.kind);
+      if (spec.dir !== undefined) params.dir = String(spec.dir);
+      if (spec.count !== undefined) params.count = __num(spec.count, "count");
+      if (spec.size !== undefined) params.size = __num(spec.size, "size");
+      if (spec.decay !== undefined) params.decay = __num(spec.decay, "decay");
+    }
+    var k = this.__key(i);
+    __call("keys.setSegmentWave", this.__ref(Object.assign({ time: k.layerTime }, params)));
+  };
+  // A bounce / elastic / spring / oscillate curve that IS the motion between key i and the next one:
+  // it swings or bounces inside the segment and lands exactly on the second key (Alight Motion style).
+  // spec: {kind: "bounce"|"elastic"|"spring"|"oscillate", dir: "out"|"in"|"inout", count, size (percent), decay}.
+  // Pass null to remove it.
+  P.keySegmentWave = function (i) {
+    var w = this.__key(i).segmentWave;
+    return w ? { kind: w.kind, dir: w.dir, count: w.count, size: w.size, decay: w.decay } : null;
+  };
+  P.setSegmentWaveAtKey = function (i, spec) {
+    var params = {};
+    if (spec === null || spec === undefined) params.clear = true;
+    else {
+      if (spec.kind !== undefined) params.kind = String(spec.kind);
+      if (spec.dir !== undefined) params.dir = String(spec.dir);
+      if (spec.count !== undefined) params.count = __num(spec.count, "count");
+      if (spec.size !== undefined) params.size = __num(spec.size, "size");
+      if (spec.decay !== undefined) params.decay = __num(spec.decay, "decay");
+    }
+    var k = this.__key(i);
+    __call("keys.setSegmentWave", this.__ref(Object.assign({ time: k.layerTime }, params)));
+  };
   P.keySelected = function (i) { return !!this.__key(i).selected; };
   P.setSelectedAtKey = function (i, b) {
     var k = this.__key(i);
