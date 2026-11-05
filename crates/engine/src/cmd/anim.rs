@@ -2,8 +2,7 @@
 //! inspection for the Keyframe Velocity / Keyframe Interpolation dialogs.
 
 use effectcraft_keyframe::{
-    Ease, Interp, Keyframe, SegmentDir, SegmentDir, SegmentKind, SegmentKind, SegmentWave, SegmentWave, ShapePath, Value as KValue, Wave, WaveKind, key_at,
-    retime_roving, side_ease,
+    Ease, Interp, Keyframe, SegmentDir, SegmentKind, SegmentWave, ShapePath, Value as KValue, Wave, WaveKind, key_at, retime_roving, side_ease,
 };
 use effectcraft_project::{ItemId, LayerId, Property, Uid};
 use effectcraft_time::Tick;
@@ -527,63 +526,6 @@ fn segment_wave_selected(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({"keys": n}))
 }
 
-/// A segment wave from the command's `kind` / `dir` / `count` / `size` (percent) / `decay`, keeping
-/// the numbers of `base` for whatever the call leaves out.
-fn segment_params(p: &Value, base: SegmentWave, c: &str) -> Result<SegmentWave> {
-    let kind = match str_p(p, "kind") {
-        Some("bounce") => SegmentKind::Bounce,
-        Some("elastic") => SegmentKind::Elastic,
-        Some("spring") => SegmentKind::Spring,
-        Some("oscillate") => SegmentKind::Oscillate,
-        Some(_) => return Err(bad(c, "`kind` must be bounce, elastic, spring or oscillate")),
-        None => base.kind,
-    };
-    let dir = match str_p(p, "dir") {
-        Some("out") => SegmentDir::Out,
-        Some("in") => SegmentDir::In,
-        Some("inout") => SegmentDir::InOut,
-        Some(_) => return Err(bad(c, "`dir` must be out, in or inout")),
-        None => base.dir,
-    };
-    let count = f_p(p, "count").map_or(base.count, |v| if v.is_finite() { v.round().clamp(1.0, 16.0) as u32 } else { base.count });
-    let size = f_p(p, "size").map_or(base.size, |v| v / 100.0);
-    Ok(SegmentWave { kind, dir, count, size, decay: f_p(p, "decay").unwrap_or(base.decay) }.sanitized())
-}
-
-/// Set, change or clear the in-segment wave of the segment that starts at one key (scripting).
-fn set_segment_wave(s: &mut Session, p: &Value) -> Result<Value> {
-    let c = "keys.setSegmentWave";
-    let (cid, lid, uid) = prop_ref(s, p, c)?;
-    let t = Tick::from_seconds_f64(f_p(p, "time").ok_or_else(|| bad(c, "missing `time`"))?);
-    let clear = p.get("clear").and_then(Value::as_bool).unwrap_or(false);
-    s.edit("Keyframe Wave", merge_p(p), |proj, _| {
-        let l = super::layer_mut(proj, cid, lid)?;
-        let pr = l.props.find_mut(uid).ok_or_else(|| bad(c, "no property"))?;
-        let i = nearest_key(&pr.keys, t).ok_or_else(|| bad(c, "no keyframes"))?;
-        if i + 1 >= pr.keys.len() && !clear {
-            return Err(bad(c, "the last keyframe starts no segment"));
-        }
-        let k = pr.keys.get_mut(i).ok_or_else(|| bad(c, "no keyframes"))?;
-        k.segment_wave = if clear { None } else { Some(segment_params(p, k.segment_wave.unwrap_or_default(), c)?) };
-        Ok(Value::Null)
-    })
-}
-
-/// Give every segment that starts at a selected key a segment wave, or clear it.
-fn segment_wave_selected(s: &mut Session, p: &Value) -> Result<Value> {
-    let c = "keys.segmentWave";
-    let clear = p.get("clear").and_then(Value::as_bool).unwrap_or(false);
-    let base = segment_params(p, SegmentWave::default(), c)?;
-    let n = super::prop::edit_keys(s, "Keyframe Wave", None, |keys, i, _| {
-        let last = i + 1 >= keys.len();
-        if let Some(k) = keys.get_mut(i) {
-            k.segment_wave = if clear || last { None } else { Some(base) };
-        }
-        false
-    })?;
-    Ok(json!({"keys": n}))
-}
-
 /// Lay a wave on every selected key, or clear it (Animation ▸ Keyframe Assistant).
 fn wave_selected(s: &mut Session, p: &Value) -> Result<Value> {
     let c = "keys.wave";
@@ -768,24 +710,6 @@ pub fn specs() -> Vec<CommandSpec> {
             "{layer?, path|prop, time (layer s), side: in|out, dim?, speed?, influence? %, merge?}",
             has_comp,
             set_ease
-        ),
-        cmd!(
-            "keys.setSegmentWave",
-            "Set Keyframe Segment Wave",
-            [],
-            None,
-            "{layer?, path|prop, time (layer s, the key the segment starts at), kind?: bounce|elastic|spring|oscillate, dir?: out|in|inout, count? 1..16, size? % 0..100, decay?, clear?: bool, merge?}",
-            has_comp,
-            set_segment_wave
-        ),
-        cmd!(
-            "keys.segmentWave",
-            "Add Bounce / Oscillate Between Keyframes",
-            ["Animation", "Keyframe Assistant"],
-            None,
-            "{kind?: bounce|elastic|spring|oscillate, dir?, count? (3), size? % (55), decay? (4), clear?: bool}",
-            has_keys,
-            segment_wave_selected
         ),
         cmd!(
             "keys.setSegmentWave",
